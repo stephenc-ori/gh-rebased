@@ -58,6 +58,10 @@ func newTestEnv(t *testing.T) *testEnv {
 	e.closeAllOpenPRs()
 	e.deleteRemoteBranchesExceptMain()
 	e.resetMain()
+	t.Cleanup(func() {
+		e.closeAllOpenPRs()
+		e.deleteRemoteBranchesExceptMain()
+	})
 	return e
 }
 
@@ -114,7 +118,7 @@ func (e *testEnv) deleteRemoteBranchesExceptMain() {
 	if err != nil {
 		return
 	}
-	for _, line := range strings.Split(string(out), "\n") {
+	for line := range strings.SplitSeq(string(out), "\n") {
 		parts := strings.Fields(line)
 		if len(parts) < 2 {
 			continue
@@ -203,7 +207,7 @@ func (e *testEnv) commitMessages() []string {
 		return nil
 	}
 	var msgs []string
-	for _, l := range strings.Split(out, "\n") {
+	for l := range strings.SplitSeq(out, "\n") {
 		if l != "" {
 			msgs = append(msgs, l)
 		}
