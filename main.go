@@ -44,6 +44,51 @@ func parseSHASet(output string) map[string]struct{} {
 	return set
 }
 
+// patchID returns the git patch-id for a commit, or "" if unavailable.
+// Patch IDs are stable across rebases: same diff content → same patch ID,
+// even when the commit SHA changes.
+func patchID(sha string) string {
+	diff, err := exec.Command("git", "diff-tree", "-p", sha).Output()
+	if err != nil || len(diff) == 0 {
+		return ""
+	}
+	cmd := exec.Command("git", "patch-id", "--stable")
+	cmd.Stdin = bytes.NewReader(diff)
+	out, err := cmd.Output()
+	if err != nil {
+		return ""
+	}
+	// output: "<patch-id> <sha>\n"
+	parts := strings.Fields(strings.TrimSpace(string(out)))
+	if len(parts) < 1 {
+		return ""
+	}
+	return parts[0]
+}
+
+// patchIDDropSet finds branch commits whose patch content matches any of the
+// parent original commits, even when SHAs differ due to a prior rebase.
+func patchIDDropSet(parentOriginalSHAs, branchSHAs map[string]struct{}) map[string]struct{} {
+	parentPatchIDs := make(map[string]struct{}, len(parentOriginalSHAs))
+	for sha := range parentOriginalSHAs {
+		if pid := patchID(sha); pid != "" {
+			parentPatchIDs[pid] = struct{}{}
+		}
+	}
+	if len(parentPatchIDs) == 0 {
+		return nil
+	}
+	drops := map[string]struct{}{}
+	for sha := range branchSHAs {
+		if pid := patchID(sha); pid != "" {
+			if _, match := parentPatchIDs[pid]; match {
+				drops[sha] = struct{}{}
+			}
+		}
+	}
+	return drops
+}
+
 func main() {
 	repo, err := repository.Current()
 	if err != nil {
@@ -93,10 +138,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	// Parse new base commits with parent counts
-	type commitInfo struct {
-		parentCount int
-	}
+	type commitInfo struct{ parentCount int }
 	newBaseCommits := map[string]commitInfo{}
 	for _, line := range strings.Split(newBaseLog, "\n") {
 		fields := strings.Fields(line)
@@ -125,11 +167,10 @@ func main() {
 	// Find squash-merged parent commits
 	fmt.Fprintln(os.Stderr, "Finding squash-merged parent commits...")
 
-	// Group single-parent commits from base by PR number
 	prToNewSHAs := map[int][]string{}
 	for sha, info := range newBaseCommits {
 		if info.parentCount != 1 {
-			continue // skip merge commits (2 parents) and initial commits (0)
+			continue
 		}
 		var assocPRs []pr
 		err := client.Get(fmt.Sprintf("repos/%s/%s/commits/%s/pulls", owner, repoName, sha), &assocPRs)
@@ -146,11 +187,9 @@ func main() {
 		}
 	}
 
-	// Identify squash merges: PR with 1 new commit on base but >1 original commit
 	parentOriginalSHAs := map[string]struct{}{}
 	for prNum, newSHAs := range prToNewSHAs {
 		if len(newSHAs) != 1 {
-			// Multiple new commits from this PR → rebase merge → git handles automatically
 			continue
 		}
 		var commits []prCommit
@@ -159,7 +198,7 @@ func main() {
 			continue
 		}
 		if len(commits) <= 1 {
-			// Single-commit PR: patch ID matching in git rebase handles it
+			// Single-commit PR: git rebase handles via patch-ID matching automatically
 			continue
 		}
 		fmt.Fprintf(os.Stderr, "  PR #%d was squash-merged — dropping %d commits\n", prNum, len(commits))
@@ -168,12 +207,17 @@ func main() {
 		}
 	}
 
-	// Build drop set: only commits that actually exist on current branch
+	// Build drop set: SHA match first, then patch-ID match for rebased commits
 	dropSHAs := map[string]struct{}{}
 	for sha := range parentOriginalSHAs {
 		if _, onBranch := branchSHAs[sha]; onBranch {
 			dropSHAs[sha] = struct{}{}
 		}
+	}
+	if len(dropSHAs) == 0 && len(parentOriginalSHAs) > 0 {
+		// Branch commits were replayed by a prior rebase — match by patch content
+		fmt.Fprintln(os.Stderr, "  (matching by patch content — branch was previously rebased)")
+		dropSHAs = patchIDDropSet(parentOriginalSHAs, branchSHAs)
 	}
 
 	if len(dropSHAs) == 0 {
@@ -186,7 +230,6 @@ func main() {
 		return
 	}
 
-	// Build sequence editor script that drops identified commits
 	shaList := make([]string, 0, len(dropSHAs))
 	for sha := range dropSHAs {
 		shaList = append(shaList, sha)
