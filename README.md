@@ -8,9 +8,9 @@ When a parent PR in your stack gets squash-merged, a plain `git rebase` doesn't 
 
 ---
 
-![your git log after a squash merge](https://i.programmerhumor.io/2025/12/eb99fe9fb08a75fad449dd1d394d00b6b5c1b0cf37704b2bdbb93cc9b5b0d960.png)
+![Yes.](https://i.kym-cdn.com/entries/icons/facebook/000/031/015/cover5.jpg)
 
-*your branch, post-squash, pre-rebased*
+*your branch, rebased.*
 
 ---
 
