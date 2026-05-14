@@ -41,10 +41,18 @@ func newTestEnv(t *testing.T) *testEnv {
 	testRepo := repo.Name + "-test"
 	dir := t.TempDir()
 
+	// Use HTTPS with token when GH_TOKEN is set (CI), otherwise SSH (local).
 	cloneURL := fmt.Sprintf("git@github.com:%s/%s.git", owner, testRepo)
+	if tok := os.Getenv("GH_TOKEN"); tok != "" {
+		cloneURL = fmt.Sprintf("https://x-access-token:%s@github.com/%s/%s.git", tok, owner, testRepo)
+	}
 	if out, err := exec.Command("git", "clone", cloneURL, dir).CombinedOutput(); err != nil {
 		t.Fatalf("git clone: %v\n%s", err, out)
 	}
+
+	// Ensure git user identity is set for commits made by the test.
+	exec.Command("git", "-C", dir, "config", "user.email", "ci@gh-rebased.test").Run() //nolint
+	exec.Command("git", "-C", dir, "config", "user.name", "gh-rebased CI").Run()       //nolint
 
 	e := &testEnv{t: t, dir: dir, owner: owner, testRepo: testRepo, client: client}
 	e.closeAllOpenPRs()
