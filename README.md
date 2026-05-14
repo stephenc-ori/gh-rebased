@@ -45,7 +45,7 @@ These tools take a broader approach to stacked PR workflows:
 
 - **[git-machete](https://github.com/VirtusLab/git-machete)** — full branch relationship manager with rebase automation across the whole stack
 - **[gh-stack](https://github.com/github/gh-stack)** — GitHub's official stacked PR extension; handles cascading rebases and PR creation
-- **[gh-domino](https://github.com/search?q=gh-domino)** — another gh extension in this space
+- **[gh-domino](https://github.com/134130/gh-domino)** — rebases stacked PRs like dominoes when one in the chain is merged
 
 `gh-rebased` is narrower: it does one thing, on one branch, when you need it.
 
