@@ -192,7 +192,7 @@ func main() {
 		shaList = append(shaList, sha)
 	}
 	script := fmt.Sprintf(`#!/bin/sh
-perl -i -pe 'BEGIN{%%d=map{$_=>1}qw(%s)} s/^pick (\S+)/exists %%d{$1} ? "drop $1" : "pick $1"/e' "$1"
+perl -i -pe 'BEGIN{%%d=map{$_=>1}qw(%s)} s/^pick (\S+)/exists $d{$1} ? "drop $1" : "pick $1"/e' "$1"
 `, strings.Join(shaList, " "))
 
 	tmpFile, err := os.CreateTemp("", "gh-rebased-*.sh")
